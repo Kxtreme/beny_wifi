@@ -430,30 +430,31 @@ class BenyWifiUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raise UpdateFailed("Unknown error after retries in _send_udp_request")
 
     async def async_toggle_charging(self, device_name: str, action: str):
-    # 1. Trata o PIN para 6 caracteres hexadecimal (3 bytes)
-        pin_hex = self.get_pin_for_device(device_name)  # ou equivalente
-        pin_hex_3byte = f"{int(pin_hex, 16):06x}".upper()  # Correção da base 16
+        # 1. Obter o PIN do dispositivo a partir das propriedades reais da classe/config
+        # (Ajusta 'self.pin' ou 'self.config_entry.data.get("pin")' conforme a tua estrutura)
+        pin_hex = getattr(self, "pin", None) or self.config_entry.data.get("pin", "01E240")
 
-        # 2. Converte a ação ("start" / "stop") no byte correspondente (0x00 ou 0x01)
+        # 2. Formatar o PIN para 6 caracteres hexadecimais (3 bytes) usando base 16
+        pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
+
+        # 3. Converter a ação ("start" / "stop") no byte correto
         if isinstance(action, str):
             action_byte = 0x01 if action.lower() == "stop" else 0x00
         else:
             action_byte = 0x01 if action == 1 else 0x00
 
-        # 3. Monta a estrutura da mensagem em bytes (sem o checksum)
-        # Header: 55aa8f000c00
-        # PIN: pin_hex_3byte (ex: 01E240)
-        # Subcomando: 8f
-        # Ação: action_byte (00 ou 01)
+        # 4. Montar a mensagem completa em hex
+        # Header: 55aa | Tamanho/Tipo: 8f000c00 | PIN: 01E240 | SubCmd: 8f | Ação: 00 ou 01
         base_hex = f"55aa8f000c00{pin_hex_3byte}8f{action_byte:02x}"
         payload_bytes = bytearray.fromhex(base_hex)
 
-        # 4. Calcula o Checksum dinâmico (Soma de todos os bytes mod 256)
-        checksum = sum(payload_bytes) % 256
+        # 5. Calcular o Checksum (Soma dos bytes a partir do byte index 2, excluindo '55aa')
+        checksum = sum(payload_bytes[2:]) % 256
         payload_bytes.append(checksum)
 
-        # 5. Envia o payload completo via UDP/Socket
-        await self.async_send_udp_payload(payload_bytes)
+        # 6. Enviar o pacote via UDP/Socket
+        # (Ajusta o método de envio para o nome real da tua função no coordinator)
+        await self._async_send_command(payload_bytes)
 
     async def async_set_max_monthly_consumption(self, device_name: str, maximum_consumption: int):
         """Set maximum consumption."""
