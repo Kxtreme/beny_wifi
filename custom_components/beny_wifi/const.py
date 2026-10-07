@@ -332,7 +332,7 @@ class CLIENT_MESSAGE(Enum):
             "cmd": slice(19, 21)    # 1 byte: 0x00=START, 0x01=STOP
         }
     }
-    }
+
     SET_TIMER = {
         "description": "Set timer",
         "hex": "55aa10001c000[pin]6900016008000[end_timer_set][start_h][start_min]00[end_h][end_min]0017153b[checksum]",
