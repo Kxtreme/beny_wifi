@@ -432,48 +432,45 @@ class BenyWifiUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_toggle_charging(self, device_name: str, command: str):
         """Start or stop charging service."""
 
-        # Verifica se o carregador está desligado (UNPLUGGED)
+        # 1. Verifica se o carregador está ligado
         state_sensor_value = get_entity_state_by_key(self.hass, self.config_entry, "charger_state", "sensor")
 
         if state_sensor_value and state_sensor_value.state != CHARGER_STATE.UNPLUGGED.name.lower():
-            if command not in ("start", "stop"):
+            # 2. Obter e formatar o PIN para 3 bytes hex (ex: "01E240")
+            pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
+            try:
+                pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
+            except ValueError:
+                pin_hex_3byte = f"{int(str(pin_hex)):06x}".upper()
+
+            # 3. Definir explicitamente o comando em formato Hex de 2 dígitos (00 ou 01)
+            if command == "start":
+                charge_type = "00"
+            elif command == "stop":
+                charge_type = "01"
+            else:
                 _LOGGER.error(f"Unknown command: {command}")
                 return
 
-            # 1. Obter o PIN e converter com base 16 para evitar ValueError
-            pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
-            pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
-
-            # 2. Definir o comando (0x00 para START, 0x01 para STOP)
-            if command == "start":
-                charge_type = "00"
-            else:
-                charge_type = "01"
-
-            # 3. Construir a mensagem
-            request = build_message(
+            # 4. Construir a mensagem com build_message
+            raw_message = build_message(
                 CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
                 {"pid": pin_hex_3byte, "cmd": charge_type}
             )
 
-            # Se build_message retornar string hexadecimal, converte para bytes;
-            # se já retornar string/bytes, ajusta conforme o retorno:
-            if isinstance(request, str):
-                try:
-                    # Tenta converter a string hex gerada em bytes reais
-                    request_bytes = bytes.fromhex(request)
-                except ValueError:
-                    # Caso build_message já retorne a string formatada em texto
-                    request_bytes = request.encode('utf-8')
+            # 5. Converter a string Hexadecimal em Bytes Binários de Socket
+            if isinstance(raw_message, str):
+                clean_hex = raw_message.replace(" ", "").replace("0x", "").replace("0X", "")
+                request = bytes.fromhex(clean_hex)
             else:
-                request_bytes = request
+                request = raw_message
 
-            # 4. Envio UDP em thread separada
+            # 6. Enviar via UDP
             loop = asyncio.get_running_loop()
             async with self._udp_lock:
-                await loop.run_in_executor(None, self._send_udp_request, request_bytes)
-        
-        _LOGGER.info(f"{device_name}: {command} charging command sent")
+                await loop.run_in_executor(None, self._send_udp_request, request)
+                
+            _LOGGER.info(f"{device_name}: {command} charging command sent")
 
     async def async_set_max_monthly_consumption(self, device_name: str, maximum_consumption: int):
         """Set maximum consumption."""
