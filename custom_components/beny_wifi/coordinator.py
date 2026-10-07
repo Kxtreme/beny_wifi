@@ -430,31 +430,27 @@ class BenyWifiUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raise UpdateFailed("Unknown error after retries in _send_udp_request")
 
     async def async_toggle_charging(self, device_name: str, action: str):
-        # 1. Obter o PIN do dispositivo a partir das propriedades reais da classe/config
-        # (Ajusta 'self.pin' ou 'self.config_entry.data.get("pin")' conforme a tua estrutura)
+        # 1. Obter o PIN configurado na integração
         pin_hex = getattr(self, "pin", None) or self.config_entry.data.get("pin", "01E240")
 
-        # 2. Formatar o PIN para 6 caracteres hexadecimais (3 bytes) usando base 16
+        # 2. Formatar o PIN para 6 caracteres hex (3 bytes) usando base 16
         pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
 
-        # 3. Converter a ação ("start" / "stop") no byte correto
-        if isinstance(action, str):
-            action_byte = 0x01 if action.lower() == "stop" else 0x00
-        else:
-            action_byte = 0x01 if action == 1 else 0x00
+        # 3. Converter a ação ("start" / "stop") para o byte correto (0x00 ou 0x01)
+        action_byte = 0x01 if str(action).lower() == "stop" else 0x00
 
-        # 4. Montar a mensagem completa em hex
-        # Header: 55aa | Tamanho/Tipo: 8f000c00 | PIN: 01E240 | SubCmd: 8f | Ação: 00 ou 01
+        # 4. Montar a mensagem hexadecimal base (Header: 55aa | SubCmd: 8f)
         base_hex = f"55aa8f000c00{pin_hex_3byte}8f{action_byte:02x}"
         payload_bytes = bytearray.fromhex(base_hex)
 
-        # 5. Calcular o Checksum (Soma dos bytes a partir do byte index 2, excluindo '55aa')
+        # 5. Calcular o Checksum (Soma dos bytes a partir de index 2, excluindo o header '55aa')
         checksum = sum(payload_bytes[2:]) % 256
         payload_bytes.append(checksum)
 
-        # 6. Enviar o pacote via UDP/Socket
-        # (Ajusta o método de envio para o nome real da tua função no coordinator)
-        await self._async_send_command(payload_bytes)
+        # 6. USAR O MÉTODO REAL DE ENVIO DA TUA CLASSE:
+        # Substitui 'self._async_send_command' pelo método que já existe no teu coordinator.
+        # Exemplo:
+        await self._send_udp_payload(payload_bytes)  # <--- Altera aqui para o nome real
 
     async def async_set_max_monthly_consumption(self, device_name: str, maximum_consumption: int):
         """Set maximum consumption."""
