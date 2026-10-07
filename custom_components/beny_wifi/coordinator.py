@@ -437,14 +437,22 @@ class BenyWifiUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if state_sensor_value and state_sensor_value.state != CHARGER_STATE.UNPLUGGED.name.lower():
             if command == "start":
+                pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
+                # Encode PIN as 3-byte big-endian hex (e.g., "123456" -> "01E240")
+                pin_hex_3byte = f"{int(pin_hex):06x}".upper()
+                charge_type = get_hex(CHARGER_COMMAND.START.value).upper()  # 0x00
                 request = build_message(
                     CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
-                    {"pin": get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN), "charger_command": get_hex(CHARGER_COMMAND.START.value)}
+                    {"pid": pin_hex_3byte, "cmd": charge_type}
                 ).encode('ascii')
             elif command == "stop":
+                pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
+                # Encode PIN as 3-byte big-endian hex (e.g., "123456" -> "01E240")
+                pin_hex_3byte = f"{int(pin_hex):06x}".upper()
+                charge_type = get_hex(CHARGER_COMMAND.STOP.value).upper()  # 0x01
                 request = build_message(
                     CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
-                    {"pin": get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN), "charger_command": get_hex(CHARGER_COMMAND.STOP.value)}
+                    {"pid": pin_hex_3byte, "cmd": charge_type}
                 ).encode('ascii')
             else:
                 _LOGGER.error(f"Unknown command: {command}")

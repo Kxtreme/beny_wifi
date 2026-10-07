@@ -9,3 +9,7 @@ tests/old/*
 tools/*.pcap
 tools/*.json
 tools/__pycache__
+*openspec*
+*.opencode*
+*.pcap
+*.xapk

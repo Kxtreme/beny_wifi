@@ -246,10 +246,14 @@ class TIMER_STATE(Enum):
     START_END_TIME = 3
 
 class CHARGER_COMMAND(Enum):
-    """Charger commands."""
+    """Charger commands.
 
-    STOP = 0
-    START = 1
+    Values represent the charge_type byte (position 22) in the type 8f command:
+    0x00 = START, 0x01 = STOP
+    """
+
+    STOP = 0x01
+    START = 0x00
 
 class REQUEST_TYPE(Enum):
     """Request type to retrieve data from charger."""
@@ -321,12 +325,13 @@ class CLIENT_MESSAGE(Enum):
         }
     }
     SEND_CHARGER_COMMAND = {
-        "description": "Start or stop charging",
-        "hex": "55aa10000c000[pin]06[charger_command][checksum]",
+        "description": "Start or stop charging (type 8f protocol)",
+        "hex": "55aa8f000c00[pid]8f[cmd][checksum]",
         "structure": {
-            "pin": slice(13,18),
-            "charger_command": slice(21, 22)
+            "pin": slice(13, 19),   # 3 bytes (6 hex chars) = PIN big-endian hex
+            "cmd": slice(19, 21)    # 1 byte: 0x00=START, 0x01=STOP
         }
+    }
     }
     SET_TIMER = {
         "description": "Set timer",
