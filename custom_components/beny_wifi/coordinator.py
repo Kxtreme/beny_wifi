@@ -432,44 +432,35 @@ class BenyWifiUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_toggle_charging(self, device_name: str, command: str):
         """Start or stop charging service."""
 
-        # 1. Verifica se o carregador está ligado
+        # check if charger is unplugged
         state_sensor_value = get_entity_state_by_key(self.hass, self.config_entry, "charger_state", "sensor")
 
         if state_sensor_value and state_sensor_value.state != CHARGER_STATE.UNPLUGGED.name.lower():
-            # 2. Obter e formatar o PIN para 3 bytes hex (ex: "01E240")
-            pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
-            try:
-                pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
-            except ValueError:
-                pin_hex_3byte = f"{int(str(pin_hex)):06x}".upper()
-
-            # 3. Definir explicitamente o comando em formato Hex de 2 dígitos (00 ou 01)
             if command == "start":
-                charge_type = "00"
+                pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
+                # Encode PIN as 3-byte big-endian hex (e.g., "123456" -> "01E240")
+                pin_hex_3byte = f"{int(pin_hex):06x}".upper()
+                charge_type = get_hex(CHARGER_COMMAND.START.value).upper()  # 0x00
+                request = build_message(
+                    CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
+                    {"pid": pin_hex_3byte, "cmd": charge_type}
+                ).encode('ascii')
             elif command == "stop":
-                charge_type = "01"
+                pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
+                # Encode PIN as 3-byte big-endian hex (e.g., "123456" -> "01E240")
+                pin_hex_3byte = f"{int(pin_hex):06x}".upper()
+                charge_type = get_hex(CHARGER_COMMAND.STOP.value).upper()  # 0x01
+                request = build_message(
+                    CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
+                    {"pid": pin_hex_3byte, "cmd": charge_type}
+                ).encode('ascii')
             else:
                 _LOGGER.error(f"Unknown command: {command}")
                 return
 
-            # 4. Construir a mensagem com build_message
-            raw_message = build_message(
-                CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
-                {"pid": pin_hex_3byte, "cmd": charge_type}
-            )
-
-            # 5. Converter a string Hexadecimal em Bytes Binários de Socket
-            if isinstance(raw_message, str):
-                clean_hex = raw_message.replace(" ", "").replace("0x", "").replace("0X", "")
-                request = bytes.fromhex(clean_hex)
-            else:
-                request = raw_message
-
-            # 6. Enviar via UDP
             loop = asyncio.get_running_loop()
             async with self._udp_lock:
                 await loop.run_in_executor(None, self._send_udp_request, request)
-                
             _LOGGER.info(f"{device_name}: {command} charging command sent")
 
     async def async_set_max_monthly_consumption(self, device_name: str, maximum_consumption: int):
