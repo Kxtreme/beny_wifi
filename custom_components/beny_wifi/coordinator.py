@@ -429,28 +429,51 @@ class BenyWifiUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     sock.close()
         raise UpdateFailed("Unknown error after retries in _send_udp_request")
 
-    async def async_toggle_charging(self, device_name: str, action: str):
-        # 1. Obter o PIN configurado na integração
-        pin_hex = getattr(self, "pin", None) or self.config_entry.data.get("pin", "01E240")
+    async def async_toggle_charging(self, device_name: str, command: str):
+        """Start or stop charging service."""
 
-        # 2. Formatar o PIN para 6 caracteres hex (3 bytes) usando base 16
-        pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
+        # Verifica se o carregador está desligado (UNPLUGGED)
+        state_sensor_value = get_entity_state_by_key(self.hass, self.config_entry, "charger_state", "sensor")
 
-        # 3. Converter a ação ("start" / "stop") para o byte correto (0x00 ou 0x01)
-        action_byte = 0x01 if str(action).lower() == "stop" else 0x00
+        if state_sensor_value and state_sensor_value.state != CHARGER_STATE.UNPLUGGED.name.lower():
+            if command not in ("start", "stop"):
+                _LOGGER.error(f"Unknown command: {command}")
+                return
 
-        # 4. Montar a mensagem hexadecimal base (Header: 55aa | SubCmd: 8f)
-        base_hex = f"55aa8f000c00{pin_hex_3byte}8f{action_byte:02x}"
-        payload_bytes = bytearray.fromhex(base_hex)
+            # 1. Obter o PIN e converter com base 16 para evitar ValueError
+            pin_hex = get_config_parameter(self.config_entry, SECTION_DEVICE, CONF_PIN)
+            pin_hex_3byte = f"{int(str(pin_hex), 16):06x}".upper()
 
-        # 5. Calcular o Checksum (Soma dos bytes a partir de index 2, excluindo o header '55aa')
-        checksum = sum(payload_bytes[2:]) % 256
-        payload_bytes.append(checksum)
+            # 2. Definir o comando (0x00 para START, 0x01 para STOP)
+            if command == "start":
+                charge_type = "00"
+            else:
+                charge_type = "01"
 
-        # 6. USAR O MÉTODO REAL DE ENVIO DA TUA CLASSE:
-        # Substitui 'self._async_send_command' pelo método que já existe no teu coordinator.
-        # Exemplo:
-        await self._send_udp_payload(payload_bytes)  # <--- Altera aqui para o nome real
+            # 3. Construir a mensagem
+            request = build_message(
+                CLIENT_MESSAGE.SEND_CHARGER_COMMAND,
+                {"pid": pin_hex_3byte, "cmd": charge_type}
+            )
+
+            # Se build_message retornar string hexadecimal, converte para bytes;
+            # se já retornar string/bytes, ajusta conforme o retorno:
+            if isinstance(request, str):
+                try:
+                    # Tenta converter a string hex gerada em bytes reais
+                    request_bytes = bytes.fromhex(request)
+                except ValueError:
+                    # Caso build_message já retorne a string formatada em texto
+                    request_bytes = request.encode('utf-8')
+            else:
+                request_bytes = request
+
+            # 4. Envio UDP em thread separada
+            loop = asyncio.get_running_loop()
+            async with self._udp_lock:
+                await loop.run_in_executor(None, self._send_udp_request, request_bytes)
+        
+        _LOGGER.info(f"{device_name}: {command} charging command sent")
 
     async def async_set_max_monthly_consumption(self, device_name: str, maximum_consumption: int):
         """Set maximum consumption."""
